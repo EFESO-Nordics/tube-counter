@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tube Counter</title>
+<meta name="description" content="Count the tubes in a bundle from a photo of the tube ends.">
+<meta name="theme-color" content="#1F2326">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icon-192.png">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="src/app.css">
+</head>
+<body>
+<!--APP-START-->
+<div class="app">
+  <header class="bar">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2"><circle cx="7" cy="8" r="3.4"/><circle cx="15" cy="8" r="3.4"/><circle cx="11" cy="15" r="3.4"/><circle cx="19" cy="15" r="3.4"/><circle cx="3" cy="15" r="3.4"/></g></svg>
+      <span>Tube Counter</span>
+    </div>
+  </header>
+
+  <section class="actions">
+    <label class="btn primary big" for="photo-input">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-2.5h6L17 8h3v11H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+      Photograph bundle
+    </label>
+    <input id="photo-input" type="file" accept="image/*" capture="environment" hidden>
+  </section>
+  <p class="tip">Stand square to the bundle end, fill most of the frame with it and keep it sharp. Even light on the tube ends helps.</p>
+
+  <section class="scale" aria-label="Size in millimetres">
+    <div class="scale-row">
+      <div class="scale-state" id="scale-state">Sizes: relative (no mm scale yet)</div>
+      <button type="button" class="btn small" id="btn-ar">Measure size (AR)</button>
+    </div>
+    <p class="note small" id="scale-note">For sizes in mm: on an Android phone press Measure size (no input needed), or type the tube OD below.</p>
+    <div class="nominal" id="nominal">
+      <div class="row wrap">
+        <label class="field" for="od-input"><span>Tube OD for mm (mm, or inches with ")</span>
+          <input id="od-input" type="text" inputmode="decimal" autocomplete="off" placeholder="e.g. 25.00"></label>
+        <button type="button" class="btn small" id="btn-od-apply">Show mm</button>
+        <button type="button" class="btn small ghost" id="btn-scale-clear">Clear</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="readout" aria-live="polite">
+    <div class="lcd">
+      <div class="lcd-label">Tubes <span id="lcd-sub">sample photo</span></div>
+      <div class="lcd-value"><span id="val-count">---</span></div>
+      <div class="lcd-sub" id="val-detail">&nbsp;</div>
+    </div>
+    <dl class="figures" id="figures">
+      <div><dt>Bore ID</dt><dd id="val-id">--</dd><dd class="rng" id="rng-id">&nbsp;</dd></div>
+      <div><dt>Outer OD</dt><dd id="val-od">--</dd><dd class="rng" id="rng-od">&nbsp;</dd></div>
+      <div><dt>Wall</dt><dd id="val-wall">--</dd><dd class="rng" id="rng-wall">&nbsp;</dd></div>
+      <div><dt>Off-size</dt><dd id="val-flag">--</dd><dd class="rng" id="rng-flag">&nbsp;</dd></div>
+    </dl>
+    <div class="status" id="status" data-level="idle"><span class="dot"></span><span id="status-text">Loading the sample photo</span></div>
+  </section>
+
+  <section class="finder-wrap">
+    <div class="seg tapmode" role="radiogroup" aria-label="Tap action">
+      <button type="button" role="radio" aria-checked="true" data-tap="fix" id="tap-fix">Tap fixes count</button>
+      <button type="button" role="radio" aria-checked="false" data-tap="info" id="tap-info">Tap shows size</button>
+    </div>
+    <div class="finder-tools">
+      <div class="seg" role="radiogroup" aria-label="Zoom">
+        <button type="button" role="radio" aria-checked="true" data-zoom="1" id="zoom-1">Fit</button>
+        <button type="button" role="radio" aria-checked="false" data-zoom="2" id="zoom-2">2×</button>
+        <button type="button" role="radio" aria-checked="false" data-zoom="4" id="zoom-4">4×</button>
+      </div>
+      <button type="button" class="btn small" id="btn-undo" disabled>Undo</button>
+      <button type="button" class="btn small ghost" id="btn-recount" disabled>Recount</button>
+    </div>
+    <div class="finder" id="finder">
+      <canvas id="view" width="800" height="600"></canvas>
+    </div>
+    <p class="tip" id="tap-tip">Tap a mark to remove it. Tap a tube without a mark to add it. Zoom in to check dense bundles. Red marks are off-size tubes.</p>
+    <div class="tube-info" id="tube-info" hidden></div>
+  </section>
+
+  <section class="save-row">
+    <label class="field grow" for="label-input"><span>Label (bundle, heat, lot)</span>
+      <input id="label-input" type="text" placeholder="e.g. Bundle 4711" autocomplete="off"></label>
+    <button type="button" class="btn primary" id="btn-save" disabled>Save count</button>
+  </section>
+
+  <nav class="tabs" role="tablist">
+    <button type="button" role="tab" id="tab-log" aria-selected="true" data-panel="panel-log">Counts</button>
+    <button type="button" role="tab" id="tab-tubes" aria-selected="false" data-panel="panel-tubes">Tubes</button>
+    <button type="button" role="tab" id="tab-how" aria-selected="false" data-panel="panel-how">Guide</button>
+  </nav>
+
+  <section class="panel" id="panel-log" role="tabpanel">
+    <div class="table-wrap">
+      <table class="log">
+        <thead><tr><th>Label</th><th class="num">Tubes</th><th class="num">Edits</th><th class="num">ID mm</th><th class="num">OD mm</th><th class="num">Off</th><th>Time</th></tr></thead>
+        <tbody id="log-body"></tbody>
+      </table>
+    </div>
+    <p class="empty" id="log-empty">No counts saved yet. Count a bundle, check it, then press Save count.</p>
+    <div class="row wrap">
+      <button type="button" class="btn small" id="btn-copy">Copy CSV</button>
+      <button type="button" class="btn small" id="btn-download">Download CSV</button>
+      <button type="button" class="btn small ghost" id="btn-clear">Clear all</button>
+      <span class="confirm" id="clear-confirm" hidden>Delete all counts? <button type="button" class="btn small danger" id="btn-clear-yes">Delete</button> <button type="button" class="btn small ghost" id="btn-clear-no">Keep</button></span>
+      <span class="toast" id="toast" role="status"></span>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-tubes" role="tabpanel" hidden>
+    <p class="note" id="tubes-note">Every tube of the current photo, numbered row by row from the top. Off-size tubes are listed first.</p>
+    <div class="table-wrap tall">
+      <table class="log">
+        <thead><tr><th class="num">No.</th><th class="num">ID</th><th class="num">OD</th><th class="num">Wall</th><th class="num">ID vs bundle</th><th>Check</th></tr></thead>
+        <tbody id="tubes-body"></tbody>
+      </table>
+    </div>
+    <div class="row wrap">
+      <button type="button" class="btn small" id="btn-copy-tubes">Copy tube list (CSV)</button>
+      <button type="button" class="btn small" id="btn-download-tubes">Download tube list</button>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-how" role="tabpanel" hidden>
+    <h3>How it counts</h3>
+    <p class="note">Every tube end shows a bore ringed by its own wall, so bores stay separate even when the tubes touch. The app looks for round regions that stay stable across many brightness levels, keeps those near the common bore size, and checks that each one has a wall of its own all the way round. Empty positions in the bundle and the shadows between tubes are left out. Bundles lit from behind (bright bores) work too.</p>
+    <h3>How it sizes each tube</h3>
+    <p class="note">For every tube the app finds the bore edge (ID) and the outer edge (OD) and fits a circle to each. The ratio ID to OD does not depend on camera tilt. The photo scale changes across a tilted bundle end, so the app fits that change across the whole bundle and compares each tube with its neighbours. Tubes more than about 3 % off in ID or OD are marked red.</p>
+    <p class="note">To turn this into millimetres with no input, the <b>Measure size</b> step uses ARCore: the phone tracks its own movement in millimetres while the operator moves it sideways in front of the bundle, and works out the size of one tube end from that. Expect about 2 to 3 % on the absolute size (for example ±0.5 mm on a 25 mm OD). Tube-to-tube differences in the photo are much finer, about 0.5 %. With a nominal OD entered instead, the absolute size follows the OD tolerance.</p>
+    <h3>Taking the photo</h3>
+    <ol class="steps">
+      <li><b>Square on.</b> Stand in line with the tubes, so the bores are visible as holes, not as crescents.</li>
+      <li><b>Fill the frame</b> with the bundle end, keeping all of it in view. Each bore should be at least about 10 px across in the photo; for very large bundles, count in two halves.</li>
+      <li><b>Sharp and evenly lit.</b> Avoid strong reflections on polished ends; a lamp beside the camera works better than a flash straight on.</li>
+      <li><b>Check the marks</b> with the zoom, tap to fix any, then save.</li>
+    </ol>
+    <p class="note">Solid bars (no bore), heavily crushed ends and tubes far shorter than the rest (deep in shadow) may need a manual tap.</p>
+  </section>
+
+  <div class="xr" id="xr-overlay" hidden>
+    <canvas id="xr-canvas"></canvas>
+    <div class="xr-top">
+      <div class="xr-status" id="xr-status">Starting camera</div>
+      <div class="xr-bar"><span id="xr-progress"></span></div>
+    </div>
+    <div class="xr-reticle" aria-hidden="true"></div>
+    <div class="xr-bottom">
+      <div class="xr-read">
+        <div class="xr-label">Tube OD</div>
+        <div class="xr-value"><span id="xr-od">--.--</span><span class="unit">mm</span></div>
+        <div class="xr-sub" id="xr-sub">Point at the middle of the bundle, then move the phone slowly sideways.</div>
+      </div>
+      <div class="xr-buttons">
+        <button type="button" class="btn primary" id="xr-use" disabled>Use this size</button>
+        <button type="button" class="btn" id="xr-reset">Restart</button>
+        <button type="button" class="btn" id="xr-exit">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="foot">Counting and measuring run on the phone. No image leaves the device.</footer>
+</div>
+<!--APP-END-->
+<script src="src/count.js"></script>
+<script src="src/core.js"></script>
+<script src="src/auto.js"></script>
+<script src="src/measure.js"></script>
+<script src="src/xr.js"></script>
+<script src="src/app.js"></script>
+<script>
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('sw.js').catch(function () {});
+}
+</script>
+</body>
+</html>
