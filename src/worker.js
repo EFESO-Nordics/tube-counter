@@ -45,10 +45,13 @@ onmessage = (e) => {
   if (msg.type !== 'frame') return;
   const t0 = performance.now();
   const { w, h } = msg;
-  const gray = toGray(new Uint8Array(msg.rgba), w, h);
+  // WebXR sends RGBA rows bottom-up; the iPhone app (ARKit) sends the camera's
+  // luminance plane top-down as msg.gray.
+  const gray = msg.gray ? msg.gray : toGray(new Uint8Array(msg.rgba), w, h);
   // Predict where the tracked tube end appears in this frame: project its 3D
   // position (triangulated so far, or a first guess along the first ray).
-  const Kp = TubeAuto.intrinsics(msg.projection, w, h);
+  // Camera intrinsics: given directly (ARKit) or from the projection (WebXR).
+  const Kp = msg.K ? msg.K : TubeAuto.intrinsics(msg.projection, w, h);
   let predicted = null;
   if (target) {
     const P = est.samples.length >= 4 ? (TubeAuto.triangulate(est.samples.map((sm) => TubeAuto.pixelRay(sm.K, sm.m, sm.u, sm.v))) || {}).P || target : target;
@@ -82,8 +85,7 @@ onmessage = (e) => {
       const ray = TubeAuto.pixelRay(Kp, msg.pose, c[0], c[1]);
       target = [ray.o[0] + 0.25 * ray.d[0], ray.o[1] + 0.25 * ray.d[1], ray.o[2] + 0.25 * ray.d[2]];
     }
-    const K = TubeAuto.intrinsics(msg.projection, w, h);
-    est.add({ m: msg.pose, K, u: c[0], v: c[1], idPts, odPts, idPxD: r.diameter });
+    est.add({ m: msg.pose, K: Kp, u: c[0], v: c[1], idPts, odPts, idPxD: r.diameter });
     out.found = true;
     out.center = c;
     out.idPts = subsample(idPts, 3);

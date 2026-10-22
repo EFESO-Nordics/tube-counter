@@ -230,10 +230,26 @@
     }
   }
 
-  $('#photo-input').addEventListener('change', (e) => {
+  ['#photo-input', '#upload-input'].forEach((sel) => $(sel).addEventListener('change', (e) => {
     const f = e.target.files && e.target.files[0];
     if (f) usePhoto(f, f.name || 'photo', false);
     e.target.value = '';
+  }));
+  // On a computer: drop an image anywhere on the page, or paste one (Ctrl/Cmd+V).
+  const imageOf = (items) => Array.from(items || []).find((f) => f && f.type && f.type.startsWith('image/'));
+  document.addEventListener('dragover', (e) => { e.preventDefault(); document.body.classList.add('dropping'); });
+  document.addEventListener('dragleave', (e) => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    document.body.classList.remove('dropping');
+    const f = imageOf(e.dataTransfer && e.dataTransfer.files);
+    if (f) usePhoto(f, f.name || 'photo', false);
+  });
+  document.addEventListener('paste', (e) => {
+    if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+    const it = Array.from((e.clipboardData && e.clipboardData.items) || []).find((i) => i.type.startsWith('image/'));
+    const f = it && it.getAsFile();
+    if (f) { e.preventDefault(); usePhoto(f, 'pasted image', false); }
   });
 
   // ------------------------------------------------------------ taps
@@ -364,6 +380,7 @@
           if (st === 'no-camera') xui.status.textContent = 'Camera access was not granted to the AR session.';
         },
         onEnd: () => { xr = null; xui.overlay.hidden = true; },
+        onError: (msg) => { xr = null; xui.overlay.hidden = true; setStatus('bad', 'Could not start the AR camera: ' + msg); },
       });
     } catch (err) {
       xr = null; xui.overlay.hidden = true;
@@ -441,6 +458,7 @@
     else fallbackCopy(text);
   }
   function download(text, name) {
+    if (window.TubeNativeShare) { window.TubeNativeShare(text, name); return; } // iPhone app: share sheet
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' })); a.download = name;
     document.body.appendChild(a); a.click(); a.remove();
